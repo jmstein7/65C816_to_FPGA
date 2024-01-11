@@ -10,6 +10,7 @@ module top(
     // Clock Signals
     input logic CLK,       // Internal 12 MHz Clock
     input logic PHI2,      // External 14.31818 MHz Clock
+    input logic ACIA_CLK,  // External 1.8432 MHz Clock
 
     // Button
     input logic btn_reset, // Reset button
@@ -46,6 +47,7 @@ module top(
     output logic flashCSB,
     output logic flashCLK,
     inout  logic [3:0] flashIO
+    
 );
 
     // Clock and ACIA Signals
@@ -100,6 +102,7 @@ module top(
     assign acia_e = ~acia_enable;
     assign reg_select = address[1:0];
     
+    assign data_w = (db_enable) ? (~RWB ? D : 'bZ) : 'bZ;
     assign acia_in = (acia_enable && ~RWB) ? data_w : 'bZ; 
     assign ram_in = (ram_enable && ~RWB) ? data_w : 'bZ; 
     
@@ -116,7 +119,6 @@ module top(
 
     // Data Bus Logic
     assign D = (db_enable) ? (RWB ? (rom_enable ? rom_out : (ram_enable ? ram_out : (acia_enable ? acia_out : 'bZ))) : 'bZ) : 'bZ;
-    assign data_w = (db_enable) ? (~RWB ? D : 'bZ) : 'bZ;
 
     // Control Signal Logic
     assign RESB = ~btn_reset;
@@ -160,10 +162,12 @@ module top(
         );
 
     // Clock Divider Instantiation
+    /*
     clock_div_128 clk_divider (
         .clk_12MHz(CLK),
         .clk_8MHz(CLK_8MHz)
     );
+    */
 
     //UART Logic
     Xilinx_UART UART_A(
@@ -187,7 +191,7 @@ module top(
         .RS(reg_select),
         .DATAIN(acia_in),
         .DATAOUT(acia_out),
-        .XTLI(CLK_8MHz),
+        .XTLI(ACIA_CLK),
         .RTSB(rts),
         .CTSB(cts),
         .DTRB(),
