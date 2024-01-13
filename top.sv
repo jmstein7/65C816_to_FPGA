@@ -55,7 +55,7 @@ module top(
     
     //sram IO
     inout wire [7:0] dio_a,
-    output reg [15:0] ad,
+    output reg [18:0] ad,
     output reg oe_n,
     output reg we_n,
     output reg ce_a_n,
@@ -112,6 +112,8 @@ module top(
   logic [1:0] reg_select;
   logic mrw_enable;
   
+  logic dummy1;
+  assign ad[18:16] = 3'b000;
   //fixed
   assign vpvda = (vpa || vda) ? 1'b1 : 1'b0; 
   assign bank_enable = (~phi2) ? 1'b1 : 1'b0; 
@@ -209,7 +211,7 @@ Xilinx_UART UART_A(
     .DTRB(),
     .RXD(rx),
     .TXD(tx),
-    .IRQn(1'b1)
+    .IRQn(dummy1)
    );
 
 sram_ctrl5 ram_0(
@@ -218,19 +220,18 @@ sram_ctrl5 ram_0(
         .wr_n(mrw_n), 
         .rd_n(mrd_n), 
         .ram_e(ram_enable), 
-        .address_input(address), 
+        .address_input(address[15:0]), 
         .data_f2s(ram_in), 
         .data_s2f(ram_out), 
-        .address_to_sram_output(ad), 
+        .address_to_sram_output(ad[15:0]), 
         .we_to_sram_output(we_n), 
         .oe_to_sram_output(oe_n), 
         .ce_to_sram_output(ce_a_n), 
         .data_from_to_sram_input_output(dio_a)
         );
 
-
 dist_mem_gen_0 rom_0(
-    .a(address),
+    .a(address[13:0]),
     .spo(rom_out)
   );
 

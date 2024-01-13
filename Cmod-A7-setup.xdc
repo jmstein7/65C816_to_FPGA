@@ -141,3 +141,5 @@ set_property -dict { PACKAGE_PIN P19   IOSTANDARD LVCMOS33 } [get_ports { oe_n }
 set_property -dict { PACKAGE_PIN R19   IOSTANDARD LVCMOS33 } [get_ports { we_n }]; #IO_L10N_T1_D15_14 Sch=sram-we
 set_property -dict { PACKAGE_PIN N19   IOSTANDARD LVCMOS33 } [get_ports { ce_a_n }]; #IO_L9N_T1_DQS_D13_14 Sch=sram-ce
 
+set_property CFGBVS VCCO [current_design]  # Replace VCCO with GND if applicable
+set_property CONFIG_VOLTAGE 3.3 [current_design]  # Replace 3.3 with your actual voltage
