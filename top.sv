@@ -1,203 +1,277 @@
-/* Module Description:
-    // This module serves as the top-level entity for an FPGA design, interfacing with various
-    // components such as clocks, data buses, control signals, UART, SRAM, and FLASH.
-    // It handles the coordination and control of these components to implement the desired
-    // functionality of the FPGA.
-*/
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 09/17/2021 03:16:14 PM
+// Design Name: 
+// Module Name: top
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+//
+//  MIT License
+//
+//  Copyright (c) 2021 Jonathan Stein (New York, USA)
+//
+//  Permission is hereby granted, free of charge, to any person obtaining a copy
+//  of this software and associated documentation files (the "Software"), to deal
+//  in the Software without restriction, including without limitation the rights
+//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//  copies of the Software, and to permit persons to whom the Software is
+//  furnished to do so, subject to the following conditions:
+//
+//  The above copyright notice and this permission notice shall be included in all
+//  copies or substantial portions of the Software.
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+//  SOFTWARE.
+//////////////////////////////////////////////////////////////////////////////////
+
 
 module top(
-
-    // Clock Signals
-    input logic CLK,       // Internal 12 MHz Clock
-    input logic PHI2,      // External 14.31818 MHz Clock
-    input logic ACIA_CLK,  // External 1.8432 MHz Clock
-
-    // Button
-    input logic btn_reset, // Reset button
-
-    // Address Lines
-    input logic [15:0] A,  // Address bus
-
-    // Data Lines
-    inout logic [7:0] D,   // Data bus
-
-    // Control Signals
-    input logic RWB,       // Read/Write Bar signal
-    output logic BE,        // Bus Enable signal
-    input logic VDA,       // Valid Data Address signal
-    output logic RESB,      // Reset Bar signal
-    input logic VPA,       // Valid Peripheral Address signal
-    output logic IRQB,      // Interrupt Request Bar signal
-    output logic RDY,       // Ready signal
-
-    // UART
-    output wire uart_rxd_out,  // UART Receive Data Out
-    input wire uart_txd_in,  // UART Transmit Data In
+    input logic clk,
+    input logic acia_clk,
+    output logic RDY,
+    input logic vpa, 
+    input logic vda,
+    input logic reset,
+    input logic rwb,
+    input logic [15:0] ab,
+    inout logic [7:0] db,
+    input logic phi2,
+    output logic BE,
+    output logic irqb,   
+    output logic resb, 
+    //mode_2
+    //inout logic [7:0] data,
+    //output logic acia_e,
     
-    // SRAM
-    output reg [18:0] SramAdr, // SRAM Address Lines
-    inout wire [7:0] SramDB,    // SRAM Data Lines
-    output reg RamOEn,         // SRAM Output Enable
-    output reg RamWEn,         // SRAM Write Enable
-    output reg RamCEn,         // SRAM Chip Enable
+    //sram IO
+    inout wire [7:0] dio_a,
+    output reg [15:0] ad,
+    output reg oe_n,
+    output reg we_n,
+    output reg ce_a_n,
     
-    output wire [1:0] led,
+    //ACIA IO
+    //output wire rts,
+    //output wire tx,
+    //input wire rx,
+    //input wire cts,
     
-    // FLASH
+    //UART
+    output wire uart_tx,
+    input wire uart_rx,
+    
+    output wire [8:0] T,
+    
+    //LEDs
+    output wire LED_A,
+    output wire LED_B,
+    
+    //flash
     output logic flashCSB,
     output logic flashCLK,
-    inout  logic [3:0] flashIO
+    inout logic [3:0] flashIO
     
+    );
+  
+  //UART
+  logic rts;
+  logic tx;
+  logic rx;
+  logic cts;
+  
+  logic vpvda;
+  logic [7:0] bank; 
+  logic bank_enable;
+  logic db_enable;
+  logic rom_enable;
+  logic ram_enable;
+  logic [7:0] data_w;
+  logic [7:0] data_r; 
+  logic [7:0] read_data;
+  
+  logic [15:0] address;
+  logic [7:0] rom_out; 
+  
+  logic mrd_n, mrw_n;
+  logic [7:0] ram_in;
+  logic [7:0] ram_out; 
+  logic [7:0] acia_in;
+  logic [7:0] acia_out; 
+  logic acia_irq; 
+  logic phi_enable; 
+  logic [1:0] reg_select;
+  logic mrw_enable;
+  
+  //fixed
+  assign vpvda = (vpa || vda) ? 1'b1 : 1'b0; 
+  assign bank_enable = (~phi2) ? 1'b1 : 1'b0; 
+  assign db_enable = (~phi2) ? 1'b0 : 1'b1; 
+  assign mrw_enable = (phi2) ? 1'b1 : 1'b0;
+  assign data_rw = (rwb) ? 1'b1 : 1'b0;
+  
+  assign address = ab;
+  assign rom_enable = (address >= 16'hC000  && vpvda) ? 1'b1 : 1'b0;
+  assign ram_enable = (address < 16'h8000 && vpvda) ? 1'b1 : 1'b0;
+  assign acia_enable = (address >= 16'h8000 && address < 16'h8010 && vpvda) ? 1'b1 : 1'b0;
+  
+  //mode_2
+  assign acia_e = ~acia_enable;
+  
+  //mrd and mrw signals
+  assign mrw_n = (mrw_enable && ~rwb) ? 1'b0 : 1'b1; 
+  assign mrd_n = (mrw_enable && rwb) ? 1'b0 : 1'b1; 
+  
+  //LED Signals
+  assign LED_A = reset;
+  assign LED_B = reset;
+  
+  //bank address latch
+  always_latch begin
+  if (bank_enable) begin
+     bank = db;
+  end
+  //No else clause so a_latch's value
+  //is not always defined, so it holds its value
+end
+
+/* base model
+  assign db = (db_enable) ? (rwb ? read_data : 'bz): 'bZ,
+    data_w = (db_enable) ? (~rwb ? db : 'bZ) : 'bZ,
+    resb = ~reset,
+    irqb = 1,
+    nmib = 1;   
+*/
+
+  assign db = (db_enable) ? (rwb ? (rom_enable ? rom_out : (ram_enable ? ram_out : (acia_enable ? acia_out : 'bZ))) : 'bZ) : 'bZ,
+    data_w = (db_enable) ? (~rwb ? db : 'bZ) : 'bZ,
+    resb = ~reset,
+    irqb = 1,
+    BE = 1,
+    RDY = 1;   
+    
+  assign ram_in = (ram_enable && ~rwb) ? data_w : 'bZ; 
+  assign acia_in = (acia_enable && ~rwb) ? data_w : 'bZ; 
+  
+  /*
+  //mode_2
+  assign data = (data_rw) ? 'bZ : acia_in; 
+  assign acia_out = (data_rw) ? data : 'bZ;
+  */
+  
+  assign reg_select = address[1:0];
+
+  //UART Logic
+
+//Signal Tests
+    assign T[0] = resb;
+    assign T[1] = phi2;
+    assign T[2] = acia_clk;
+    assign T[3] = rts;
+    assign T[4] = cts;
+    assign T[5] = ram_enable;
+    assign T[6] = rom_enable;
+    assign T[7] = acia_enable;
+    //assign T[8] = rom_enable;
+
+Xilinx_UART UART_A(
+  .m_rxd(uart_rx), // Serial Input (required)
+  .m_txd(uart_tx), // Serial Output (required)
+  .m_rtsn(cts), // Request to Send out(optional)
+  .m_ctsn(rts), // Clear to Send in(optional)
+//  additional ports here
+  .acia_tx(tx),
+  .acia_rx(rx)
+
 );
 
-    // Clock and ACIA Signals
-    logic CLK_8MHz;             // Output signal for the 8 MHz clock
-    logic [7:0] acia_in;        // ACIA input data
-    logic [7:0] acia_out;       // ACIA output data
-    logic acia_irq;             // ACIA interrupt request
-    logic phi_enable;           // PHI2 enable signal
-    logic [1:0] reg_select;     // ACIA register select
+  ACIA acia_a(
+    .RESET(resb),
+    .PHI2(phi2),
+    .phi_enable(phi_enable),
+    .CS(acia_e),
+    .RWN(rwb),
+    .RS(reg_select),
+    .DATAIN(acia_in),
+    .DATAOUT(acia_out),
+    .XTLI(acia_clk),
+    .RTSB(rts),
+    .CTSB(cts),
+    .DTRB(),
+    .RXD(rx),
+    .TXD(tx),
+    .IRQn(1'b1)
+   );
 
-    // UART Signals
-    logic rts;                  // Request to Send
-    logic tx;                   // Transmit Data
-    logic rx;                   // Receive Data
-    logic cts;                  // Clear to Send
-
-    // Combined Signal for Valid Peripheral or Data Address
-    logic vpvda;                // Valid Peripheral/Data Address combined signal
-
-    // Memory Control Signals
-    logic mrd_n, mrw_n;         // Memory Read and Write control signals
-    logic mrw_enable;           // Memory Read/Write enable signal
-
-    // Data Bus Control
-    logic db_enable;            // Data Bus Enable signal
-    logic [7:0] data_w;         // Data Write buffer
-    logic [7:0] data_r;         // Data Read buffer
-    logic [7:0] read_data;      // Data Read from memory
-
-    // Bank Addressing
-    logic [7:0] BA;             // Bank Address
-    logic bank_enable;          // Bank Address Enable signal
-
-    // Memory and Peripheral Control
-    logic [15:0] address;   // Current address
-    logic acia_e;               // ACIA enable signal
-    logic rom_enable;           // ROM enable signal
-    logic ram_enable;           // RAM enable signal
-    logic [7:0] ram_in;         // RAM input data
-    logic [7:0] ram_out;        // RAM output data
-    logic [7:0] rom_out;        // ROM output data
-
-    assign address = A;
-    // Signal Assignments
-    assign vpvda = (VPA || VDA) ? 1'b1 : 1'b0;
-    assign mrw_enable = (PHI2) ? 1'b1 : 1'b0;
-    assign mwr_n = (mrw_enable && ~RWB) ? 1'b0 : 1'b1;
-    assign mrd_n = (mrw_enable && RWB) ? 1'b0 : 1'b1;
-    
-    assign bank_enable = (~PHI2) ? 1'b1 : 1'b0;
-    assign db_enable = (~PHI2) ? 1'b0 : 1'b1;
-    assign acia_e = ~acia_enable;
-    assign reg_select = address[1:0];
-    
-    assign data_w = (db_enable) ? (~RWB ? D : 'bZ) : 'bZ;
-    assign acia_in = (acia_enable && ~RWB) ? data_w : 'bZ; 
-    assign ram_in = (ram_enable && ~RWB) ? data_w : 'bZ; 
-    
-    assign rom_enable = (address >= 16'hC000  && vpvda) ? 1'b1 : 1'b0;
-    assign ram_enable = (address < 16'h8000 && vpvda) ? 1'b1 : 1'b0;
-    assign acia_enable = (address >= 16'h8000 && address < 16'h8010 && vpvda) ? 1'b1 : 1'b0;
-    
-    // Bank Demultiplex Logic
-    always_latch begin
-        if (bank_enable) begin
-            BA = D; // Latch bank address from data lines
-        end
-    end
-
-    // Data Bus Logic
-    assign D = (db_enable) ? (RWB ? (rom_enable ? rom_out : (ram_enable ? ram_out : (acia_enable ? acia_out : 'bZ))) : 'bZ) : 'bZ;
-
-    // Control Signal Logic
-    assign RESB = ~btn_reset;
-    assign RDY = 1;
-    assign BE = 1;
-    assign IRQB = 1;
-    assign RDY = 1;
-    
-    assign led[0] = RESB;
-    assign led[1] = RESB;
-    /*
-    / Control Signals
-    BE        // Bus Enable signal
-    VDA       // Valid Data Address signal
-    VPA       // Valid Peripheral Address signal
-    IRQB      // Interrupt Request Bar signal
-    RDY       // Ready signal
-    */
-    
-    //ROM
-    dist_mem_gen_0 rom_0(
-    .a(address),
-    .spo(rom_out)
-  );
-  
-    // SRAM
-    sram_ctrl5 ram_0(
-        .clk(PHI2), 
-        .rw(RWB), 
-        .wr_n(mwr_n), 
+sram_ctrl5 ram_0(
+        .clk(phi2), 
+        .rw(rwb), 
+        .wr_n(mrw_n), 
         .rd_n(mrd_n), 
         .ram_e(ram_enable), 
         .address_input(address), 
         .data_f2s(ram_in), 
         .data_s2f(ram_out), 
-        .address_to_sram_output(SramAdr), 
-        .we_to_sram_output(RamWEn), 
-        .oe_to_sram_output(RamOEn), 
-        .ce_to_sram_output(RamCEn), 
-        .data_from_to_sram_input_output(SramDB)
+        .address_to_sram_output(ad), 
+        .we_to_sram_output(we_n), 
+        .oe_to_sram_output(oe_n), 
+        .ce_to_sram_output(ce_a_n), 
+        .data_from_to_sram_input_output(dio_a)
         );
 
-    // Clock Divider Instantiation
-    /*
-    clock_div_128 clk_divider (
-        .clk_12MHz(CLK),
-        .clk_8MHz(CLK_8MHz)
+
+dist_mem_gen_0 rom_0(
+    .a(address),
+    .spo(rom_out)
+  );
+
+/*
+//Clock Divider
+clock_divider three_mhz_clk(
+  .i_Clk_12MHz(clk),
+  .phi2(phi2),
+  .phi_enable(phi_enable)
+  );
+  */
+
+/*
+//Clock Generator
+clk_wiz_0 clock_a(
+  // Clock out ports
+  .phi2(phi2),
+  // Status and control signals
+  .reset(reset),
+  .locked(),
+ // Clock in ports
+  .clk(clk)
+ );
+*/
+
+//fixed   
+   /* 
+vio_0 debug_core(
+    .clk(clk),
+    .probe_in0(ab),
+    .probe_in1(db),
+    .probe_in2(rwb),
+    .probe_in3(acia_e),
+    .probe_in4(vda),
+    .probe_in5(vpa),
+    .probe_in6(reset),
+    .probe_in7(bank),
+    .probe_in8(data_w),
+    .probe_in9(data),
+    .probe_out0(phi2)
     );
     */
-
-    //UART Logic
-    Xilinx_UART UART_A(
-    .m_rxd(uart_txd_in), // Serial Input (required)
-    .m_txd(uart_rxd_out), // Serial Output (required)
-    .m_rtsn(cts), // Request to Send out(optional)
-    .m_ctsn(rts), // Clear to Send in(optional)
-    //  additional ports here
-    .acia_tx(tx),
-    .acia_rx(rx)
-
-);
-
-    // ACIA Module Instantiation
-    ACIA acia_a(
-        .RESET(RESB),
-        .PHI2(PHI2),
-        .phi_enable(phi_enable),
-        .CS(acia_e),
-        .RWN(RWB),
-        .RS(reg_select),
-        .DATAIN(acia_in),
-        .DATAOUT(acia_out),
-        .XTLI(ACIA_CLK),
-        .RTSB(rts),
-        .CTSB(cts),
-        .DTRB(),
-        .RXD(rx),
-        .TXD(tx),
-        .IRQn(1'b1) // Placeholder for ACIA IRQ
-    );
-   
+    
 endmodule
